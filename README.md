@@ -1,6 +1,7 @@
 # ⚡ LoL Spectator HUD — Summoner & Ultimate Tracker
 
-[![Descargar Ejecutable (.exe)](https://img.shields.io/badge/⬇_DESCARGAR_EJECUTABLE-LoL__Spectator__HUD.exe-2b6cb0?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD.exe)
+[![Descargar Ejecutable (.exe)](https://img.shields.io/badge/⬇_DESCARGAR_EJECUTABLE-LoL__Spectator__HUD__1__0__0.exe-2b6cb0?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_0.exe)
+[![Versión](https://img.shields.io/badge/VERSIÓN-v1.0.0-68d391?style=for-the-badge)](https://github.com/xzyprogrammer/lol_tracker/releases)
 [![Sitio Web Oficial](https://img.shields.io/badge/🌐_WEB_DEL_PROYECTO-GitHub_Pages-38a169?style=for-the-badge)](https://xzyprogrammer.github.io/lol_tracker/)
 [![Código Abierto](https://img.shields.io/badge/CÓDIGO_ABIERTO-Python_3-ecc94b?style=for-the-badge&logo=python&logoColor=black)](https://github.com/xzyprogrammer/lol_tracker)
 
@@ -12,9 +13,10 @@
 
 No necesitas instalar Python ni configurar nada complicado si solo quieres usar la herramienta:
 
-1. 👉 **[Haz clic aquí para descargar `LoL_Spectator_HUD.exe` directamente](https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD.exe)** *(Ejecutable portable para Windows 10/11)*.
-2. Abre `LoL_Spectator_HUD.exe` antes o durante tu partida.
+1. 👉 **[Haz clic aquí para descargar `LoL_Spectator_HUD_1_0_0.exe` directamente](https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_0.exe)** *(Ejecutable portable para Windows 10/11)*.
+2. Abre `LoL_Spectator_HUD_1_0_0.exe` antes o durante tu partida.
 3. Si Windows SmartScreen muestra un aviso (por ser un ejecutable independiente sin firma empresarial de pago), haz clic en **"Más información" → "Ejecutar de todas formas"**.
+4. 🚀 **Auto-Actualización Automática:** Cuando haya una nueva versión disponible en GitHub, la aplicación te avisará al arrancar y te permitirá actualizarla automáticamente con un solo clic.
 
 ---
 
@@ -85,6 +87,7 @@ Además de la detección automática por chat, puedes interactuar directamente c
 Todo el código fuente es **100% público y auditable**:
 
 * [`app.py`](./app.py): Interfaz gráfica del HUD estilo Espectador, ciclo de vida de la partida y gestión de contadores.
+* [`updater.py`](./updater.py): Sistema de auto-actualización automática conectado al repositorio de GitHub.
 * [`live_client_api.py`](./live_client_api.py): Cliente de solo lectura para `https://127.0.0.1:2999/liveclientdata/allgamedata`, `Spectator-V5` y `LCU Ready-Check`.
 * [`ddragon_assets.py`](./ddragon_assets.py): Descarga y caché de iconos oficiales de Riot Data Dragon (campeones, hechizos y definitivas `R` por nivel).
 * [`chat_ocr.py`](./chat_ocr.py): Motor OCR con filtro de alto contraste y coincidencia difusa contra los campeones enemigos de la partida.

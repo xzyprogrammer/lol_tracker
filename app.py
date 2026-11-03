@@ -33,6 +33,7 @@ from live_client_api import (
 )
 from chat_ocr import AutoChatScanner
 from ddragon_assets import AssetManager
+from updater import CURRENT_VERSION, check_for_updates, UpdateDialog
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -279,7 +280,7 @@ class SpectatorHudApp(ctk.CTk):
         self.cfg = load_config()
         self.assets = AssetManager()
 
-        self.title("LoL Spectator HUD")
+        self.title(f"LoL Spectator HUD v{CURRENT_VERSION}")
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.attributes("-alpha", 0.92)
@@ -355,6 +356,21 @@ class SpectatorHudApp(ctk.CTk):
         self._build_ui()
         self._update_view_mode()
         self.after(200, self._main_loop)
+        self.after(800, self._check_updates_bg)
+
+    def _check_updates_bg(self) -> None:
+        def _worker() -> None:
+            up = check_for_updates(timeout=3.5)
+            if up:
+                self.after(0, lambda: self._prompt_update(up))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _prompt_update(self, up_info: dict) -> None:
+        try:
+            UpdateDialog(self, up_info)
+        except Exception:
+            pass
 
     def _get_enemy_ult_names(self) -> list[tuple[str, str]]:
         res: list[tuple[str, str]] = []
@@ -504,7 +520,15 @@ class SpectatorHudApp(ctk.CTk):
             fg_color="#38A169",
             hover_color="#2F855A",
         )
-        self.auto_accept_cb.pack(padx=8, pady=(0, 6), anchor="w")
+        self.auto_accept_cb.pack(padx=8, pady=(0, 2), anchor="w")
+
+        self.ver_lbl = ctk.CTkLabel(
+            self.waiting_frame,
+            text=f"v{CURRENT_VERSION}",
+            font=ctk.CTkFont(size=8),
+            text_color="#4A5568",
+        )
+        self.ver_lbl.pack(padx=8, pady=(0, 4), anchor="w")
 
         # --- VISTA 2: HUD VERTICAL ESTILO ESPECTADOR (Solo visible en partida o preview) ---
         self.hud_frame = ctk.CTkFrame(self.root_box, fg_color="transparent")
