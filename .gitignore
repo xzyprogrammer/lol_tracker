@@ -1,0 +1,12 @@
+# Archivos temporales de compilación y caché de Python
+build/
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+.env
+.venv/
+venv/
+
+# NOTA: Mantenemos dist/LoL_Spectator_HUD.exe en el repositorio
+# para permitir la descarga directa desde GitHub y GitHub Pages.

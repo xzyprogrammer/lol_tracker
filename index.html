@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LoL Spectator HUD — Tracker de Summoner Spells y Ultimates</title>
+  <meta name="description" content="HUD minimalista estilo Espectador para League of Legends. Detecta automáticamente Summoner Spells y Ultimates en el chat, calcula Perspicacia Cósmica y Botas Jonias en tiempo real." />
+  <style>
+    :root {
+      --bg-dark: #070a10;
+      --bg-card: #0f1420;
+      --bg-card-hover: #151c2c;
+      --border: #232d42;
+      --gold: #c89b3c;
+      --gold-bright: #f0e6d2;
+      --blue: #0ac8b9;
+      --blue-accent: #3182ce;
+      --purple: #805ad5;
+      --red: #e53e3e;
+      --green: #48bb78;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 50% 0%, #131c31 0%, var(--bg-dark) 65%);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* NAVBAR */
+    header {
+      border-bottom: 1px solid rgba(200, 155, 60, 0.25);
+      background: rgba(7, 10, 16, 0.85);
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 1.15rem;
+      letter-spacing: 0.5px;
+      color: var(--gold-bright);
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, var(--gold), #8c6518);
+      color: #070a10;
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 800;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    .nav-links a:hover {
+      color: #fff;
+    }
+
+    /* HERO */
+    .hero {
+      display: grid;
+      grid-template-columns: 1.25fr 0.95fr;
+      gap: 48px;
+      align-items: center;
+      padding: 72px 0 56px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(10, 200, 185, 0.1);
+      border: 1px solid rgba(10, 200, 185, 0.35);
+      color: var(--blue);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 5px 12px;
+      border-radius: 999px;
+      margin-bottom: 18px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    h1 {
+      font-size: 2.75rem;
+      line-height: 1.15;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 18px;
+    }
+
+    h1 span {
+      background: linear-gradient(90deg, var(--gold), #f6e05e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: 1.08rem;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+    }
+
+    .cta-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(135deg, #2b6cb0, #1a4971);
+      border: 1px solid #63b3ed;
+      color: #fff;
+      font-weight: 700;
+      font-size: 1.02rem;
+      padding: 14px 26px;
+      border-radius: 8px;
+      box-shadow: 0 8px 25px rgba(49, 130, 206, 0.35);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(49, 130, 206, 0.5);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.98rem;
+      padding: 14px 22px;
+      border-radius: 8px;
+      transition: border-color 0.15s ease;
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--gold);
+    }
+
+    .meta-note {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    /* INTERACTIVE HUD MOCKUP */
+    .hud-showcase {
+      background: rgba(15, 20, 32, 0.85);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+    }
+
+    .showcase-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .spectator-hud {
+      width: 245px;
+      margin: 0 auto;
+      background: #090c12;
+      border: 1px solid #252e3e;
+      border-radius: 8px;
+      padding: 6px;
+    }
+
+    .hud-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #121722;
+      padding: 4px 8px;
+      border-radius: 5px;
+      margin-bottom: 5px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    .hud-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #0f131c;
+      border: 1px solid #232b3a;
+      border-radius: 5px;
+      padding: 4px 6px;
+      margin-bottom: 4px;
+    }
+
+    .champ-box {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--gold);
+      border-radius: 4px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .champ-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .lvl-badge {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      background: #090c12;
+      border: 1px solid var(--gold);
+      color: #fff;
+      font-size: 0.62rem;
+      font-weight: 800;
+      padding: 0 3px;
+      line-height: 1.2;
+    }
+
+    .spell-icon {
+      position: relative;
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      overflow: hidden;
+      cursor: pointer;
+      border: 1px solid var(--green);
+      user-select: none;
+    }
+
+    .spell-icon.ult {
+      border-color: var(--gold);
+    }
+
+    .spell-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: filter 0.15s;
+    }
+
+    .spell-icon.on-cd {
+      border-color: var(--red);
+    }
+
+    .spell-icon.on-cd img {
+      filter: brightness(0.28);
+    }
+
+    .cd-number {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.82rem;
+      color: #fff;
+      text-shadow: 0 1px 3px #000, 0 0 5px #000;
+    }
+
+    .dots-col {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .dot-badge {
+      font-size: 0.6rem;
+      font-weight: 800;
+      width: 17px;
+      height: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+      background: #1a202c;
+      color: #718096;
+    }
+
+    .dot-badge.cosmic-on {
+      background: var(--purple);
+      color: #fff;
+    }
+
+    .dot-badge.boots-on {
+      background: var(--blue-accent);
+      color: #fff;
+    }
+
+    /* REQUIREMENTS ALERT */
+    .rules-banner {
+      background: linear-gradient(135deg, rgba(200, 155, 60, 0.12), rgba(15, 20, 32, 0.95));
+      border: 1px solid rgba(200, 155, 60, 0.45);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin: 24px 0 56px;
+    }
+
+    .rules-banner h2 {
+      font-size: 1.25rem;
+      color: var(--gold-bright);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .rules-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .rule-item {
+      background: rgba(7, 10, 16, 0.65);
+      border: 1px solid var(--border);
+      padding: 16px;
+      border-radius: 8px;
+    }
+
+    .rule-item strong {
+      color: var(--blue);
+      display: block;
+      margin-bottom: 4px;
+      font-size: 0.98rem;
+    }
+
+    /* FEATURES GRID */
+    .section-title {
+      text-align: center;
+      font-size: 2rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+
+    .section-sub {
+      text-align: center;
+      color: var(--text-muted);
+      max-width: 680px;
+      margin: 0 auto 42px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 22px;
+      margin-bottom: 64px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--gold);
+    }
+
+    .feature-icon {
+      font-size: 1.65rem;
+      margin-bottom: 12px;
+    }
+
+    .feature-card h3 {
+      font-size: 1.12rem;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    /* TABLE */
+    .table-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 64px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.93rem;
+    }
+
+    th {
+      background: #141b29;
+      color: var(--gold-bright);
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .tag-c {
+      background: var(--purple);
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+
+    .tag-j {
+      background: var(--blue-accent);
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+
+    @media (max-width: 860px) {
+      .hero, .rules-grid, .features-grid {
+        grid-template-columns: 1fr;
+      }
+      h1 {
+        font-size: 2.1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="container nav">
+      <div class="brand">
+        ⚡ LoL Spectator HUD <span class="brand-badge">OPEN SOURCE</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#requisitos">Requisitos</a>
+        <a href="#caracteristicas">Características</a>
+        <a href="#tabla-haste">Tabla de Enfriamientos</a>
+        <a href="https://github.com/xzyprogrammer/lol_tracker" target="_blank">Código en GitHub ↗</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- HERO -->
+    <section class="hero">
+      <div>
+        <div class="pill">🎯 Scrims • Tier 2 / Tier 3 • SoloQ &amp; Flex</div>
+        <h1>Controla cada <span>Flash y Ultimate</span> rival en tiempo real</h1>
+        <p class="hero-desc">
+          Un HUD vertical minimalista estilo <strong>Modo Espectador</strong> que se superpone a la izquierda de tu pantalla. Lee automáticamente cuando el sistema de LoL confirma un hechizo en el chat (<code>"Corki used Flash"</code> / <code>"usó Destello"</code>) y calcula al segundo la reducción de <strong>Perspicacia Cósmica</strong>, <strong>Botas Jonias</strong> y <strong>Libro de Hechizos</strong>.
+        </p>
+        <div class="cta-group">
+          <a class="btn-primary" href="https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD.exe">
+            ⬇ Descargar LoL_Spectator_HUD.exe (Windows)
+          </a>
+          <a class="btn-secondary" href="https://github.com/xzyprogrammer/lol_tracker" target="_blank">
+            💻 Ver Código Fuente Público
+          </a>
+        </div>
+        <p class="meta-note">
+          ✔ Ejecutable portable (no requiere instalar Python) • ✔ 100% Pasivo (sin macros de teclado ni inyección de memoria)
+        </p>
+      </div>
+
+      <!-- DEMO INTERACTIVA DEL HUD -->
+      <div class="hud-showcase">
+        <div class="showcase-header">
+          <span>🎮 <strong>Demo Interactiva:</strong> Haz clic en un hechizo</span>
+          <span style="color: var(--gold);">Tamaño real &lt; 23% vh</span>
+        </div>
+
+        <div class="spectator-hud">
+          <div class="hud-top-bar">
+            <span>⠿ 🟢 14:25</span>
+            <span>👁 🎯 ✕</span>
+          </div>
+
+          <!-- Row 1: Corki -->
+          <div class="hud-row">
+            <div class="champ-box">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/champion/Corki.png" alt="Corki" />
+              <span class="lvl-badge">11</span>
+            </div>
+            <div class="spell-icon on-cd" onclick="toggleDemoCd(this, 234)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/SummonerFlash.png" alt="Flash" />
+              <div class="cd-number">184</div>
+            </div>
+            <div class="spell-icon" onclick="toggleDemoCd(this, 360)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/SummonerTeleport.png" alt="TP" />
+              <div class="cd-number"></div>
+            </div>
+            <div class="spell-icon ult" onclick="toggleDemoCd(this, 20)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/MissileBarrage.png" alt="R" />
+              <div class="cd-number"></div>
+            </div>
+            <div class="dots-col">
+              <span class="dot-badge cosmic-on" title="Perspicacia Cósmica (+18 Haste)">C</span>
+              <span class="dot-badge boots-on" title="Botas Jonias (+10 Haste)">J</span>
+            </div>
+          </div>
+
+          <!-- Row 2: Skarner -->
+          <div class="hud-row">
+            <div class="champ-box">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/champion/Skarner.png" alt="Skarner" />
+              <span class="lvl-badge">10</span>
+            </div>
+            <div class="spell-icon on-cd" onclick="toggleDemoCd(this, 254)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/SummonerFlash.png" alt="Flash" />
+              <div class="cd-number">92</div>
+            </div>
+            <div class="spell-icon" onclick="toggleDemoCd(this, 90)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/SummonerSmite.png" alt="Smite" />
+              <div class="cd-number"></div>
+            </div>
+            <div class="spell-icon ult on-cd" onclick="toggleDemoCd(this, 120)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/SkarnerR.png" alt="R" />
+              <div class="cd-number">47</div>
+            </div>
+            <div class="dots-col">
+              <span class="dot-badge cosmic-on">C</span>
+              <span class="dot-badge">J</span>
+            </div>
+          </div>
+
+          <!-- Row 3: Lux -->
+          <div class="hud-row">
+            <div class="champ-box">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/champion/Lux.png" alt="Lux" />
+              <span class="lvl-badge">12</span>
+            </div>
+            <div class="spell-icon" onclick="toggleDemoCd(this, 300)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/SummonerFlash.png" alt="Flash" />
+              <div class="cd-number"></div>
+            </div>
+            <div class="spell-icon on-cd" onclick="toggleDemoCd(this, 180)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/SummonerBarrier.png" alt="Barrier" />
+              <div class="cd-number">64</div>
+            </div>
+            <div class="spell-icon ult" onclick="toggleDemoCd(this, 50)">
+              <img src="https://ddragon.leagueoflegends.com/cdn/15.1.1/img/spell/LuxR.png" alt="R" />
+              <div class="cd-number"></div>
+            </div>
+            <div class="dots-col">
+              <span class="dot-badge">C</span>
+              <span class="dot-badge">J</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REGLA DE IDIOMA Y MODO SIN BORDES -->
+    <section id="requisitos" class="rules-banner">
+      <h2>⚠️ 2 Reglas Obligatorias antes de Jugar</h2>
+      <div class="rules-grid">
+        <div class="rule-item">
+          <strong>1. League of Legends debe estar en INGLÉS o ESPAÑOL</strong>
+          El lector inteligente del chat busca específicamente la estructura gramatical que imprime el juego cuando se confirma un hechizo en visión (<code>"Corki used Flash"</code> en inglés o <code>"Corki usó Destello"</code> en español), ignorando los pings manuales sin confirmación como <code>"Corki - Flash"</code>.
+        </div>
+        <div class="rule-item">
+          <strong>2. Modo de Video: "Sin Bordes" (Borderless)</strong>
+          Dentro de las opciones de Video de LoL, selecciona <strong>Sin Bordes (Borderless)</strong> en lugar de Pantalla Completa Exclusiva. Esto permite que el HUD estilo Espectador se superponga suavemente a la izquierda de tu pantalla y pueda leer la esquina del chat.
+        </div>
+      </div>
+    </section>
+
+    <!-- CARACTERISTICAS -->
+    <section id="caracteristicas">
+      <h2 class="section-title">Diseñado para Competitivo y Scrims</h2>
+      <p class="section-sub">
+        Automatiza el cálculo mental de enfriamientos sin tocar el teclado ni interferir con tus habilidades dentro de la partida.
+      </p>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🔍</div>
+          <h3>Filtro Anti-Falsos Positivos</h3>
+          <p>
+            Distingue entre un ping normal en el tabulador (<code>"Skarner - Destello"</code>) y la confirmación real del sistema cuando el rival flashea en visión o cámara de muerte (<code>"Skarner used Flash"</code> / <code>"usó Destello"</code>).
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🛡️</div>
+          <h3>No Reinicia Timers Activos</h3>
+          <p>
+            Si Lux gasta Flash al minuto 1 y Udyr gasta Flash al minuto 2 mostrando ambos mensajes en el chat, el sistema protege el contador activo de Lux y jamás lo reinicia de vuelta a 300 segundos.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">👢</div>
+          <h3>Runas, Botas Jonias y Libro de Hechizos</h3>
+          <p>
+            Detecta automáticamente desde la API oficial local (<code>127.0.0.1:2999</code>) cuando un enemigo compra <strong>Botas Jonias</strong> (<code>J</code>), si lleva <strong>Perspicacia Cósmica</strong> (<code>C</code>) o si intercambia hechizos con <strong>Libro de Hechizos Abierto</strong>.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔥</div>
+          <h3>Ultimates (R) por Nivel Real</h3>
+          <p>
+            Descarga automáticamente de Riot Data Dragon el icono de la definitiva (<code>R</code>) de cada rival y ajusta su tiempo según su nivel en tiempo real dentro de la partida (Niveles 6, 11 y 16).
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔄</div>
+          <h3>Adaptación 1v1, 2v2 y 5v5</h3>
+          <p>
+            Al terminar una partida se reinicia solo a una píldora mínima de espera (<code>🟠 Esperando partida...</code>). Si entras a un 1v1 con un amigo, solo dibuja 1 fila; en 5v5 dibuja las 5 filas.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Auto-Aceptar Cola en Espera</h3>
+          <p>
+            Mientras estás fuera de partida buscando cola, el programa vigila el estado de <em>Ready Check</em> y acepta automáticamente la partida encontrada por si no estás frente al PC.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TABLA DE HASTE -->
+    <section id="tabla-haste">
+      <h2 class="section-title">Cálculo Matemático Exacto</h2>
+      <p class="section-sub">
+        Así impactan los indicadores <strong>C (Perspicacia Cósmica)</strong> y <strong>J (Botas Jonias)</strong> que el HUD enciende automáticamente al lado de cada campeón:
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Combinación Detectada</th>
+              <th>Badges en HUD</th>
+              <th>Summoner Haste</th>
+              <th>Destello / Flash (Base 300s)</th>
+              <th>Ignite / Barrier (Base 180s)</th>
+              <th>Exhaust / Heal / Ghost (Base 240s)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Sin reducciones</td>
+              <td>—</td>
+              <td><code>0</code></td>
+              <td><strong>300s</strong> (5:00)</td>
+              <td><strong>180s</strong> (3:00)</td>
+              <td><strong>240s</strong> (4:00)</td>
+            </tr>
+            <tr>
+              <td>Solo Botas Jonias de la Lucidez</td>
+              <td><span class="tag-j">J</span></td>
+              <td><code>+10</code></td>
+              <td><strong>273s</strong> (4:33)</td>
+              <td><strong>164s</strong> (2:44)</td>
+              <td><strong>218s</strong> (3:38)</td>
+            </tr>
+            <tr>
+              <td>Solo Perspicacia Cósmica</td>
+              <td><span class="tag-c">C</span></td>
+              <td><code>+18</code></td>
+              <td><strong>254s</strong> (4:14)</td>
+              <td><strong>153s</strong> (2:33)</td>
+              <td><strong>203s</strong> (3:23)</td>
+            </tr>
+            <tr>
+              <td>Perspicacia Cósmica + Botas Jonias</td>
+              <td><span class="tag-c">C</span> <span class="tag-j">J</span></td>
+              <td><code>+28</code></td>
+              <td><strong>234s</strong> (3:54)</td>
+              <td><strong>141s</strong> (2:21)</td>
+              <td><strong>188s</strong> (3:08)</td>
+            </tr>
+            <tr>
+              <td>Perspicacia Cósmica + Lucidez Carmesí (T3)</td>
+              <td><span class="tag-c">C</span> <span class="tag-j">J</span></td>
+              <td><code>+38</code></td>
+              <td><strong>217s</strong> (3:37)</td>
+              <td><strong>130s</strong> (2:10)</td>
+              <td><strong>174s</strong> (2:54)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>
+        Proyecto de Código Abierto — <a href="https://github.com/xzyprogrammer/lol_tracker" style="color: var(--gold);">github.com/xzyprogrammer/lol_tracker</a>
+      </p>
+      <p style="margin-top: 6px; font-size: 0.78rem;">
+        LoL Spectator HUD no está respaldado por Riot Games y no refleja las opiniones ni los puntos de vista de Riot Games. Utiliza únicamente la API local oficial Live Client Data (127.0.0.1:2999) y Data Dragon.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    function toggleDemoCd(el, maxCd) {
+      const numEl = el.querySelector('.cd-number');
+      if (el.classList.contains('on-cd')) {
+        el.classList.remove('on-cd');
+        numEl.textContent = '';
+      } else {
+        el.classList.add('on-cd');
+        numEl.textContent = maxCd;
+      }
+    }
+
+    setInterval(() => {
+      document.querySelectorAll('.spell-icon.on-cd .cd-number').forEach(el => {
+        const val = parseInt(el.textContent, 10);
+        if (!isNaN(val) && val > 1) {
+          el.textContent = val - 1;
+        } else if (val <= 1) {
+          el.parentElement.classList.remove('on-cd');
+          el.textContent = '';
+        }
+      });
+    }, 1000);
+  </script>
+</body>
+</html>
