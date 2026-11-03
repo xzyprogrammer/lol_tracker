@@ -5,7 +5,7 @@ y Auto-Accept de Cola mediante LCU API local (LeagueClientUx.exe).
 
 from __future__ import annotations
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import psutil
 import urllib3
@@ -62,6 +62,7 @@ class EnemyPlayerSnapshot:
     has_inspiration_tree: bool
     has_lucidity_boots: bool
     has_crimson_lucidity: bool
+    items: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -196,6 +197,7 @@ def fetch_live_match_snapshot(timeout: float = 0.45) -> Optional[LiveMatchSnapsh
                 has_inspiration_tree=has_insp,
                 has_lucidity_boots=has_lucidity,
                 has_crimson_lucidity=has_crimson,
+                items=p.get("items") or [],
             )
         )
 

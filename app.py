@@ -89,6 +89,7 @@ class EnemySlotState:
     level: int
     spell1: SummonerSpellInfo
     spell2: SummonerSpellInfo
+    ability_haste: int = 0
     has_cosmic_insight: bool = False
     has_lucidity_boots: bool = False
     has_crimson_lucidity: bool = False
@@ -222,12 +223,13 @@ class SpectatorEnemyRow:
         cd_u = (
             slot.timer_ult.total_cooldown
             if slot.timer_ult
-            else ult_info.cooldown_for_level(slot.level)
+            else ult_info.cooldown_for_level(slot.level, slot.ability_haste)
         )
 
         sig = (
             slot.champion_name,
             slot.level,
+            slot.ability_haste,
             slot.spell1.key,
             slot.spell2.key,
             ult_info.image_full,
@@ -296,6 +298,7 @@ class SpectatorHudApp(ctk.CTk):
         self._drag_start_y = 0
 
         self.is_live_connected: bool = False
+        self._missed_poll_count: int = 0
         self.active_enemy_count: int = 0
         self.preview_hud_when_waiting: bool = False
         self.game_time_seconds: float = 0.0
@@ -333,6 +336,7 @@ class SpectatorHudApp(ctk.CTk):
                 (idx, sp, is_ult, raw)
             ),
             on_queue_accepted=self._on_queue_accepted_notify,
+            get_game_time=lambda: self.game_time_seconds,
         )
         reg = self.cfg.get("chat_region", [0.0, 0.52, 0.40, 0.94])
         if isinstance(reg, list) and len(reg) == 4:
@@ -370,6 +374,7 @@ class SpectatorHudApp(ctk.CTk):
             s.champion_name = ""
             s.riot_id = ""
             s.level = 1
+            s.ability_haste = 0
             s.has_cosmic_insight = False
             s.has_lucidity_boots = False
             s.has_crimson_lucidity = False
@@ -378,8 +383,8 @@ class SpectatorHudApp(ctk.CTk):
             s.spell_timers.clear()
             s.timer_ult = None
         self.active_enemy_count = 0
-        self.scanner._still_visible_in_chat.clear()
-        self.scanner._missing_frames_count.clear()
+        self.scanner._consumed_event_signatures.clear()
+        self.scanner._last_trigger_wall.clear()
 
     def _on_queue_accepted_notify(self) -> None:
         try:
@@ -388,18 +393,16 @@ class SpectatorHudApp(ctk.CTk):
             pass
 
     def _is_spell_on_cooldown(self, slot_index: int, spell_key: str) -> bool:
+        """Verifica si un spell (o la ult) ya tiene un timer activo no expirado."""
         if slot_index < 0 or slot_index >= len(self.slots):
             return False
         slot = self.slots[slot_index]
         if spell_key == "ULT":
             return bool(slot.timer_ult and not slot.timer_ult.is_expired(self.game_time_seconds))
-        if slot.timer1 and not slot.timer1.is_expired(self.game_time_seconds):
-            if slot.timer1.spell.key if hasattr(slot.timer1, "spell") else True:
-                if slot.spell1.key == spell_key or spell_key == "Flash":
-                    return True
-        if slot.timer2 and not slot.timer2.is_expired(self.game_time_seconds):
-            if slot.spell2.key == spell_key:
-                return True
+        # Buscar en el diccionario de spell_timers por clave exacta
+        timer = slot.spell_timers.get(spell_key)
+        if timer and not timer.is_expired(self.game_time_seconds):
+            return True
         return False
 
     def _build_ui(self) -> None:
@@ -536,6 +539,7 @@ class SpectatorHudApp(ctk.CTk):
             for i, c in enumerate(demo_champs):
                 self.slots[i].champion_name = c
                 self.slots[i].level = 6
+                self.slots[i].ability_haste = 0
             self.active_enemy_count = 5
         elif not self.is_live_connected:
             self._reset_all_slots()
@@ -590,6 +594,11 @@ class SpectatorHudApp(ctk.CTk):
                 )
                 t.total_cooldown = new_cd
                 t.expires_at_game_time = t.started_at_game_time + new_cd
+        if slot.timer_ult is not None and slot.champion_name:
+            ult_data = self.assets.get_ultimate_info(slot.champion_name)
+            new_u_cd = ult_data.cooldown_for_level(slot.level, slot.ability_haste)
+            slot.timer_ult.total_cooldown = new_u_cd
+            slot.timer_ult.expires_at_game_time = slot.timer_ult.started_at_game_time + new_u_cd
 
     def trigger_from_auto_chat(
         self,
@@ -604,7 +613,7 @@ class SpectatorHudApp(ctk.CTk):
             if slot.timer_ult and not slot.timer_ult.is_expired(self.game_time_seconds):
                 return
             ult_data = self.assets.get_ultimate_info(slot.champion_name)
-            cd_u = ult_data.cooldown_for_level(slot.level)
+            cd_u = ult_data.cooldown_for_level(slot.level, slot.ability_haste)
             slot.timer_ult = ActiveTimer(
                 started_at_game_time=self.game_time_seconds,
                 expires_at_game_time=self.game_time_seconds + cd_u,
@@ -658,7 +667,7 @@ class SpectatorHudApp(ctk.CTk):
 
         if kind == "ult":
             ult_data = self.assets.get_ultimate_info(slot.champion_name)
-            cd = ult_data.cooldown_for_level(slot.level)
+            cd = ult_data.cooldown_for_level(slot.level, slot.ability_haste)
         else:
             spell = slot.spell1 if kind == "sp1" else slot.spell2
             cd = calculate_cooldown(
@@ -689,7 +698,8 @@ class SpectatorHudApp(ctk.CTk):
         for s in self.slots:
             s.spell_timers.clear()
             s.timer_ult = None
-        self.scanner._still_visible_in_chat.clear()
+        self.scanner._consumed_event_signatures.clear()
+        self.scanner._last_trigger_wall.clear()
 
     def _open_chat_calibrator(self) -> None:
         win = ctk.CTkToplevel(self)
@@ -775,18 +785,21 @@ class SpectatorHudApp(ctk.CTk):
         _refresh_preview()
 
     def _poll_live_game(self) -> None:
-        snap: Optional[LiveMatchSnapshot] = fetch_live_match_snapshot(timeout=0.35)
+        snap: Optional[LiveMatchSnapshot] = fetch_live_match_snapshot(timeout=0.65)
         if snap is None:
             if self.is_live_connected:
-                # ¡Terminó la partida! Limpiar los 5 slots de campeones y volver a pantalla de espera
-                self.is_live_connected = False
-                self.preview_hud_when_waiting = False
-                self.spectator_queried_for_match = False
-                self.spectator_cosmic_by_riot_id.clear()
-                self._reset_all_slots()
-                self._update_view_mode()
+                self._missed_poll_count += 1
+                # Solo declaramos fin de partida tras 5 fallos consecutivos (~6 segundos sin respuesta)
+                if self._missed_poll_count >= 5:
+                    self.is_live_connected = False
+                    self.preview_hud_when_waiting = False
+                    self.spectator_queried_for_match = False
+                    self.spectator_cosmic_by_riot_id.clear()
+                    self._reset_all_slots()
+                    self._update_view_mode()
             return
 
+        self._missed_poll_count = 0
         was_connected = self.is_live_connected
         if not was_connected:
             # Inició una partida nueva: limpiar cualquier dato residual antes de cargar los rivales actuales
@@ -829,6 +842,7 @@ class SpectatorHudApp(ctk.CTk):
                 slot.spell1 = enemy.spell1
                 slot.spell2 = enemy.spell2
                 slot.has_crimson_lucidity = enemy.has_crimson_lucidity
+                slot.ability_haste = self.assets.get_items_ability_haste(enemy.items)
 
                 self.assets.get_ultimate_info(enemy.champion_name)
 
@@ -850,6 +864,7 @@ class SpectatorHudApp(ctk.CTk):
                 slot.champion_name = ""
                 slot.riot_id = ""
                 slot.level = 1
+                slot.ability_haste = 0
                 slot.has_cosmic_insight = False
                 slot.has_lucidity_boots = False
                 slot.has_crimson_lucidity = False

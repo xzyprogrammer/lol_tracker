@@ -109,6 +109,7 @@ def match_confirmed_chat_line(
     line: str,
     enemy_champions: list[str],
     enemy_ult_names: Optional[list[tuple[str, str]]] = None,
+    current_game_time: Optional[float] = None,
 ) -> Optional[tuple[int, str, Optional[SummonerSpellInfo], bool]]:
     """
     Analiza una línea del chat de LoL:
@@ -116,9 +117,25 @@ def match_confirmed_chat_line(
       devuelve (slot_index, champ_name, SummonerSpellInfo, False)
     - Si es una Ultimate confirmada ("Corki used R" o "Corki used Missile Barrage"):
       devuelve (slot_index, champ_name, None, True)
+    - Si la línea tiene marca de tiempo ([MM:SS]) y fue enviada hace más de 20s, la descarta.
     """
     if not line or len(line) < 5:
         return None
+
+    # Si el juego ya lleva tiempo y el mensaje tiene timestamp, validar su antigüedad
+    if current_game_time is not None and current_game_time > 15.0:
+        ts_match = re.search(r"\[?(\d{1,2}):(\d{2})\]?", line)
+        if ts_match:
+            try:
+                mins = int(ts_match.group(1))
+                secs = int(ts_match.group(2))
+                ts_seconds = mins * 60 + secs
+                age = current_game_time - ts_seconds
+                if age > 20.0:
+                    # Mensaje antiguo aún visible en el historial del chat
+                    return None
+            except Exception:
+                pass
 
     if not USED_VERB_PATTERN.search(line):
         return None
@@ -211,6 +228,7 @@ class AutoChatScanner:
         is_spell_already_on_cooldown: Callable[[int, str], bool],
         on_confirmed_spell: Callable[[int, Optional[SummonerSpellInfo], bool, str], None],
         on_queue_accepted: Optional[Callable[[], None]] = None,
+        get_game_time: Optional[Callable[[], float]] = None,
     ) -> None:
         self.is_in_game = is_in_game
         self.get_enemy_champions = get_enemy_champions
@@ -218,6 +236,7 @@ class AutoChatScanner:
         self.is_spell_already_on_cooldown = is_spell_already_on_cooldown
         self.on_confirmed_spell = on_confirmed_spell
         self.on_queue_accepted = on_queue_accepted
+        self.get_game_time = get_game_time
 
         self.enabled: bool = True
         self.auto_accept_queue: bool = True
@@ -229,8 +248,8 @@ class AutoChatScanner:
         self.last_snapshot_image: Optional[Image.Image] = None
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        self._still_visible_in_chat: set[tuple[int, str]] = set()
-        self._missing_frames_count: dict[tuple[int, str], int] = {}
+        self._consumed_event_signatures: dict[str, int] = {}
+        self._last_trigger_wall: dict[tuple[int, str], float] = {}
         self._last_accept_wall: float = 0.0
 
     def start(self) -> None:
@@ -327,36 +346,49 @@ class AutoChatScanner:
 
                     enemies = self.get_enemy_champions()
                     ult_names = self.get_enemy_ult_names()
-                    seen_this_frame: set[tuple[int, str]] = set()
+                    current_gt = self.get_game_time() if self.get_game_time else None
 
+                    # Contar ocurrencias de cada firma normalizada en este frame actual
+                    frame_counts: dict[str, int] = {}
                     for ln in all_lines:
-                        matched = match_confirmed_chat_line(ln, enemies, ult_names)
+                        matched = match_confirmed_chat_line(
+                            ln, enemies, ult_names, current_game_time=current_gt
+                        )
                         if matched is not None:
                             slot_idx, champ_name, spell_info, is_ult = matched
                             spell_key = "ULT" if is_ult else (spell_info.key if spell_info else "Flash")
                             key = (slot_idx, spell_key)
-                            seen_this_frame.add(key)
 
-                            if self.is_spell_already_on_cooldown(slot_idx, spell_key):
-                                self._still_visible_in_chat.add(key)
-                                self._missing_frames_count[key] = 0
+                            # Firma semántica limpia (ignora mayúsculas, espacios y símbolos)
+                            # Si tiene timestamp, incluye la marca de tiempo para diferenciar lanzamientos
+                            clean_txt = re.sub(r"[^a-z0-9]", "", ln.lower())
+                            sig = f"{slot_idx}_{spell_key}_{clean_txt}"
+                            frame_counts[sig] = frame_counts.get(sig, 0) + 1
+                            instance_idx = frame_counts[sig]
+
+                            consumed = self._consumed_event_signatures.get(sig, 0)
+                            # Si esta instancia específica ya fue consumida anteriormente en la partida,
+                            # significa que es una línea vieja que sigue visible en el historial del chat.
+                            if instance_idx <= consumed:
                                 continue
 
-                            if key not in self._still_visible_in_chat:
-                                self._still_visible_in_chat.add(key)
-                                self._missing_frames_count[key] = 0
-                                self.on_confirmed_spell(slot_idx, spell_info, is_ult, ln)
+                            # Si el hechizo ya está en cooldown (o se acaba de activar),
+                            # marcamos esta línea como consumida para que al expirar el timer
+                            # NO vuelva a dispararse por la presencia de este texto residual.
+                            if self.is_spell_already_on_cooldown(slot_idx, spell_key):
+                                self._consumed_event_signatures[sig] = instance_idx
+                                continue
 
-                    for key in list(self._still_visible_in_chat):
-                        if self.is_spell_already_on_cooldown(key[0], key[1]):
-                            self._missing_frames_count[key] = 0
-                        elif key not in seen_this_frame:
-                            self._missing_frames_count[key] = self._missing_frames_count.get(key, 0) + 1
-                            if self._missing_frames_count[key] >= 6:
-                                self._still_visible_in_chat.discard(key)
-                                self._missing_frames_count.pop(key, None)
-                        else:
-                            self._missing_frames_count[key] = 0
+                            # Evitar dobles disparos en menos de 2.0 segundos de tiempo real
+                            now_mono = time.monotonic()
+                            if now_mono - self._last_trigger_wall.get(key, 0.0) < 2.0:
+                                self._consumed_event_signatures[sig] = instance_idx
+                                continue
+
+                            # ¡Nuevo uso confirmado! Consumir esta línea y disparar el timer
+                            self._consumed_event_signatures[sig] = instance_idx
+                            self._last_trigger_wall[key] = now_mono
+                            self.on_confirmed_spell(slot_idx, spell_info, is_ult, ln)
 
                 except Exception as e:
                     self.last_raw_preview = f"Err: {str(e)[:40]}"

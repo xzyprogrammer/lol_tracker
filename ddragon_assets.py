@@ -85,12 +85,47 @@ class ChampUltimateInfo:
     image_full: str
     cooldowns: tuple[int, int, int]  # (Rank 1 @ lvl 6, Rank 2 @ lvl 11, Rank 3 @ lvl 16)
 
-    def cooldown_for_level(self, level: int) -> int:
+    def cooldown_for_level(self, level: int, ability_haste: int = 0) -> int:
         if level >= 16:
-            return max(15, self.cooldowns[2])
-        if level >= 11:
-            return max(15, self.cooldowns[1])
-        return max(15, self.cooldowns[0])
+            base = max(15, self.cooldowns[2])
+        elif level >= 11:
+            base = max(15, self.cooldowns[1])
+        else:
+            base = max(15, self.cooldowns[0])
+        if ability_haste > 0:
+            return max(10, round(base * (100.0 / (100.0 + ability_haste))))
+        return base
+
+
+# Diccionario inicial con los valores de Aceleración de Habilidad (AH) más comunes
+# para que funcione de inmediato incluso sin conexión a internet.
+DEFAULT_ITEM_HASTE: dict[int, int] = {
+    3158: 10,   # Botas Jonias de la Lucidez (+10 AH)
+    3108: 10,   # Códice Diabólico (+10 AH)
+    3067: 10,   # Gema Viva (+10 AH)
+    3802: 10,   # Capítulo Perdido (+10 AH)
+    3118: 35,   # Malignidad (+15 AH + 20 Ultimate AH)
+    3100: 10,   # Perdición del Liche (+10 AH)
+    4629: 25,   # Impulso Cósmico (+25 AH)
+    3071: 20,   # Cuchilla Negra (+20 AH)
+    3152: 15,   # Cinturón Cohete Hextech (+15 AH)
+    3137: 15,   # Criptoflorecencia (+15 AH)
+    6655: 20,   # Compañero de Luden (+20 AH)
+    3078: 20,   # Fuerza de la Trinidad (+20 AH)
+    3110: 20,   # Corazón de Hielo (+20 AH)
+    3065: 10,   # Rostro Espiritual (+10 AH)
+    3165: 15,   # Morellonomicon (+15 AH)
+    3115: 15,   # Diente de Nashor (+15 AH)
+    3004: 15,   # Manamune (+15 AH)
+    3003: 20,   # Bastón del Arcángel (+20 AH)
+    6692: 15,   # Eclipse (+15 AH)
+    6694: 15,   # Rencor de Serylda (+15 AH)
+    6696: 20,   # Arco Axiomático (+20 AH)
+    6698: 20,   # Hidra Profana (+20 AH)
+    6699: 15,   # Soberbia (+15 AH)
+    3074: 20,   # Hidra Voraz (+20 AH)
+    3133: 10,   # Martillo de Guerra de Caulfield (+10 AH)
+}
 
 
 class AssetManager:
@@ -98,11 +133,24 @@ class AssetManager:
         self.version: str = "16.21.1"
         self.champ_name_to_id: dict[str, str] = dict(SPECIAL_CHAMP_MAP)
         self.ult_info_by_cid: dict[str, ChampUltimateInfo] = {}
+        self.item_haste_by_id: dict[int, int] = dict(DEFAULT_ITEM_HASTE)
         self._fetching_cids: set[str] = set()
         self._mem_cache: dict[str, Image.Image] = {}
         self._lock = threading.Lock()
         self._init_done = False
         threading.Thread(target=self._init_ddragon_metadata, daemon=True).start()
+
+    def get_items_ability_haste(self, items: list[dict]) -> int:
+        """Suma la Aceleración de Habilidad (Ability Haste) total de los objetos del jugador."""
+        total = 0
+        with self._lock:
+            for it in items or []:
+                try:
+                    iid = int(it.get("itemID", 0) or 0)
+                    total += self.item_haste_by_id.get(iid, 0)
+                except Exception:
+                    pass
+        return total
 
     def _init_ddragon_metadata(self) -> None:
         try:
@@ -112,6 +160,7 @@ class AssetManager:
                 if versions and isinstance(versions, list):
                     self.version = str(versions[0])
 
+            # 1. Nombres e IDs de campeones
             c_url = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/data/en_US/champion.json"
             rc = requests.get(c_url, timeout=4.0)
             if rc.status_code == 200:
@@ -124,6 +173,36 @@ class AssetManager:
                         self.champ_name_to_id[name_low] = cid
                         self.champ_name_to_id[id_low] = cid
                         self.champ_name_to_id[clean_low] = cid
+
+            # 2. Descargar datos de objetos para extraer Ability Haste y Ultimate Haste de todos
+            i_url = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/data/en_US/item.json"
+            ri = requests.get(i_url, timeout=4.0)
+            if ri.status_code == 200:
+                idata = ri.json().get("data") or {}
+                with self._lock:
+                    for iid_str, it_info in idata.items():
+                        try:
+                            iid = int(iid_str)
+                            desc = str(it_info.get("description", ""))
+                            h_match = re.search(
+                                r"<attention>(\d+)</attention>\s*(?:Ability Haste|Aceleraci[oó]n de Habilidad)",
+                                desc,
+                                re.I,
+                            )
+                            u_match = re.search(
+                                r"<attention>(\d+)</attention>\s*(?:Ultimate Haste|Habilidad Definitiva)",
+                                desc,
+                                re.I,
+                            )
+                            haste = 0
+                            if h_match:
+                                haste += int(h_match.group(1))
+                            if u_match:
+                                haste += int(u_match.group(1))
+                            if haste > 0:
+                                self.item_haste_by_id[iid] = haste
+                        except Exception:
+                            pass
 
             for sp_key in SPELL_DDRAGON_IMAGE:
                 self.get_spell_base_image(sp_key, size=(28, 28))
@@ -148,8 +227,8 @@ class AssetManager:
     def get_ultimate_info(self, champ_name: str) -> ChampUltimateInfo:
         """
         Devuelve la información del Ultimate (R) del campeón (enfriamientos exactos por nivel 6/11/16,
-        nombres en inglés/español e icono). Si aún no está en caché, lanza la descarga en segundo plano
-        y devuelve un valor por defecto inmediato (100s / 85s / 70s).
+        nombres en inglés/español e icono). Si aún no está en caché, intenta un fetch rápido síncrono
+        antes de devolver un valor por defecto.
         """
         cid = self.resolve_champ_ddragon_id(champ_name)
         with self._lock:
@@ -176,6 +255,54 @@ class AssetManager:
             except Exception:
                 pass
 
+        # Intentar fetch síncrono rápido (timeout bajo) para no usar fallback genérico
+        try:
+            url_en = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/data/en_US/champion/{cid}.json"
+            r_en = requests.get(url_en, timeout=1.5)
+            if r_en.status_code == 200:
+                c_en = r_en.json().get("data", {}).get(cid, {})
+                spells_en = c_en.get("spells") or []
+                if len(spells_en) >= 4:
+                    ult_en = spells_en[3]
+                    raw_cds = ult_en.get("cooldown") or [100, 85, 70]
+                    if len(raw_cds) == 1:
+                        cds = (int(raw_cds[0]), int(raw_cds[0]), int(raw_cds[0]))
+                    elif len(raw_cds) == 2:
+                        cds = (int(raw_cds[0]), int(raw_cds[1]), int(raw_cds[1]))
+                    else:
+                        cds = (int(raw_cds[0]), int(raw_cds[1]), int(raw_cds[2]))
+                    name_en = str(ult_en.get("name") or "R")
+                    img_full = str((ult_en.get("image") or {}).get("full") or "")
+                    spell_id = str(ult_en.get("id") or f"{cid}R")
+                    name_es = name_en
+                    try:
+                        url_es = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/data/es_MX/champion/{cid}.json"
+                        r_es = requests.get(url_es, timeout=1.0)
+                        if r_es.status_code == 200:
+                            spells_es = (r_es.json().get("data", {}).get(cid, {}).get("spells") or [])
+                            if len(spells_es) >= 4:
+                                name_es = str(spells_es[3].get("name") or name_en)
+                    except Exception:
+                        pass
+                    info = ChampUltimateInfo(
+                        champ_id=cid, spell_id=spell_id, name_en=name_en,
+                        name_es=name_es, image_full=img_full, cooldowns=cds,
+                    )
+                    # Guardar en caché de disco y memoria
+                    try:
+                        with open(json_cache_path, "w", encoding="utf-8") as f:
+                            json.dump({"spell_id": spell_id, "name_en": name_en,
+                                       "name_es": name_es, "image_full": img_full,
+                                       "cooldowns": list(cds)}, f)
+                    except Exception:
+                        pass
+                    with self._lock:
+                        self.ult_info_by_cid[cid] = info
+                    return info
+        except Exception:
+            pass
+
+        # Si ni el disco ni la red funcionaron, lanzar fetch en segundo plano y devolver fallback
         with self._lock:
             if cid not in self._fetching_cids:
                 self._fetching_cids.add(cid)
