@@ -17,7 +17,7 @@ from typing import Optional, Callable
 import requests
 import customtkinter as ctk
 
-CURRENT_VERSION = "1.0.2"
+CURRENT_VERSION = "1.0.3"
 VERSION_INFO_URL = "https://raw.githubusercontent.com/xzyprogrammer/lol_tracker/main/version.json"
 REPO_RELEASES_URL = "https://github.com/xzyprogrammer/lol_tracker"
 

@@ -458,7 +458,20 @@ class SpectatorHudApp(ctk.CTk):
         self.clock_lbl.bind("<ButtonPress-1>", self._start_drag)
         self.clock_lbl.bind("<B1-Motion>", self._on_drag)
 
-        # Botón Cerrar
+        # Badge visual de versión siempre visible en el menú superior
+        self.ver_badge = ctk.CTkLabel(
+            self.header_bar,
+            text=f"v{CURRENT_VERSION}",
+            font=ctk.CTkFont(size=8, weight="bold"),
+            text_color="#63B3ED",
+            fg_color="#182333",
+            corner_radius=4,
+            width=38,
+            height=15,
+        )
+        self.ver_badge.pack(side="left", padx=(3, 2))
+
+        # Botón Cerrar (✕)
         ctk.CTkButton(
             self.header_bar,
             text="✕",
@@ -471,32 +484,20 @@ class SpectatorHudApp(ctk.CTk):
             command=self.destroy,
         ).pack(side="right", padx=(1, 2), pady=1)
 
-        # Botón Calibrar Chat
-        ctk.CTkButton(
-            self.header_bar,
-            text="🎯",
-            width=20,
-            height=16,
-            corner_radius=3,
-            fg_color="#2B6CB0",
-            hover_color="#2C5282",
-            font=ctk.CTkFont(size=9),
-            command=self._open_chat_calibrator,
-        ).pack(side="right", padx=1, pady=1)
-
-        # Botón Vista Previa (para ver/ocultar el HUD cuando estás fuera de partida)
+        # Botón Modo Demo / Vista Previa (para ver los 5 campeones de prueba fuera de partida)
         self.preview_btn = ctk.CTkButton(
             self.header_bar,
-            text="👁",
-            width=20,
+            text="👁 DEMO",
+            width=48,
             height=16,
             corner_radius=3,
-            fg_color="#2D3748",
-            hover_color="#4A5568",
-            font=ctk.CTkFont(size=9),
+            fg_color="#1E2A3A",
+            hover_color="#2B4365",
+            text_color="#E2E8F0",
+            font=ctk.CTkFont(size=8, weight="bold"),
             command=self._toggle_preview_hud,
         )
-        self.preview_btn.pack(side="right", padx=1, pady=1)
+        self.preview_btn.pack(side="right", padx=(1, 2), pady=1)
 
         # --- VISTA 1: INTERFAZ INICIAL "ESPERANDO PARTIDA" ---
         self.waiting_frame = ctk.CTkFrame(self.root_box, fg_color="transparent")
@@ -524,9 +525,9 @@ class SpectatorHudApp(ctk.CTk):
 
         self.ver_lbl = ctk.CTkLabel(
             self.waiting_frame,
-            text=f"v{CURRENT_VERSION}",
-            font=ctk.CTkFont(size=8),
-            text_color="#4A5568",
+            text=f"LoL Spectator HUD • v{CURRENT_VERSION}",
+            font=ctk.CTkFont(size=9, weight="bold"),
+            text_color="#718096",
         )
         self.ver_lbl.pack(padx=8, pady=(0, 4), anchor="w")
 

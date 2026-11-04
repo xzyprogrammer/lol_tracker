@@ -1,7 +1,7 @@
 {
-  "version": "1.0.2",
-  "filename": "LoL_Spectator_HUD_1_0_2.exe",
-  "download_url": "https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_2.exe",
+  "version": "1.0.3",
+  "filename": "LoL_Spectator_HUD_1_0_3.exe",
+  "download_url": "https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_3.exe",
   "mandatory": false,
-  "changelog": "Versión 1.0.2:\n- Actualización automática probada y verificada.\n- Corrección del re-disparo de Destello al ultear.\n- Cálculo dinámico de Aceleración de Habilidad (Ability Haste) para Definitivas (R).\n- Estabilidad de conexión con la API de Riot Games."
+  "changelog": "Versión 1.0.3:\n- Badge visual con la versión (v1.0.3) visible permanentemente en la barra superior.\n- Botón '👁 DEMO' con texto claro y carga 100% fluida en segundo plano (sin congelar la app).\n- Eliminado botón de calibración redundante que causaba bloqueo de ventana.\n- Optimización de descargas de iconos y definitivas en hilos asíncronos."
 }

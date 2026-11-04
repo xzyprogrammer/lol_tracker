@@ -206,6 +206,12 @@ class AssetManager:
 
             for sp_key in SPELL_DDRAGON_IMAGE:
                 self.get_spell_base_image(sp_key, size=(28, 28))
+
+            # Pre-cargar los 5 campeones de demo en segundo plano para que el botón de prueba sea 100% instantáneo
+            for demo_c in ("Corki", "Skarner", "Ahri", "Jinx", "Nautilus"):
+                self.get_champion_spectator_portrait(demo_c, level=6, size=(34, 34))
+                self.get_ultimate_info(demo_c)
+                self.get_ultimate_base_image(demo_c, size=(28, 28))
         except Exception:
             pass
         finally:
@@ -227,8 +233,8 @@ class AssetManager:
     def get_ultimate_info(self, champ_name: str) -> ChampUltimateInfo:
         """
         Devuelve la información del Ultimate (R) del campeón (enfriamientos exactos por nivel 6/11/16,
-        nombres en inglés/español e icono). Si aún no está en caché, intenta un fetch rápido síncrono
-        antes de devolver un valor por defecto.
+        nombres en inglés/español e icono). Si aún no está en caché de disco, inicia la descarga
+        en segundo plano (sin bloquear la interfaz) y devuelve un valor por defecto inmediato.
         """
         cid = self.resolve_champ_ddragon_id(champ_name)
         with self._lock:
@@ -255,54 +261,7 @@ class AssetManager:
             except Exception:
                 pass
 
-        # Intentar fetch síncrono rápido (timeout bajo) para no usar fallback genérico
-        try:
-            url_en = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/data/en_US/champion/{cid}.json"
-            r_en = requests.get(url_en, timeout=1.5)
-            if r_en.status_code == 200:
-                c_en = r_en.json().get("data", {}).get(cid, {})
-                spells_en = c_en.get("spells") or []
-                if len(spells_en) >= 4:
-                    ult_en = spells_en[3]
-                    raw_cds = ult_en.get("cooldown") or [100, 85, 70]
-                    if len(raw_cds) == 1:
-                        cds = (int(raw_cds[0]), int(raw_cds[0]), int(raw_cds[0]))
-                    elif len(raw_cds) == 2:
-                        cds = (int(raw_cds[0]), int(raw_cds[1]), int(raw_cds[1]))
-                    else:
-                        cds = (int(raw_cds[0]), int(raw_cds[1]), int(raw_cds[2]))
-                    name_en = str(ult_en.get("name") or "R")
-                    img_full = str((ult_en.get("image") or {}).get("full") or "")
-                    spell_id = str(ult_en.get("id") or f"{cid}R")
-                    name_es = name_en
-                    try:
-                        url_es = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/data/es_MX/champion/{cid}.json"
-                        r_es = requests.get(url_es, timeout=1.0)
-                        if r_es.status_code == 200:
-                            spells_es = (r_es.json().get("data", {}).get(cid, {}).get("spells") or [])
-                            if len(spells_es) >= 4:
-                                name_es = str(spells_es[3].get("name") or name_en)
-                    except Exception:
-                        pass
-                    info = ChampUltimateInfo(
-                        champ_id=cid, spell_id=spell_id, name_en=name_en,
-                        name_es=name_es, image_full=img_full, cooldowns=cds,
-                    )
-                    # Guardar en caché de disco y memoria
-                    try:
-                        with open(json_cache_path, "w", encoding="utf-8") as f:
-                            json.dump({"spell_id": spell_id, "name_en": name_en,
-                                       "name_es": name_es, "image_full": img_full,
-                                       "cooldowns": list(cds)}, f)
-                    except Exception:
-                        pass
-                    with self._lock:
-                        self.ult_info_by_cid[cid] = info
-                    return info
-        except Exception:
-            pass
-
-        # Si ni el disco ni la red funcionaron, lanzar fetch en segundo plano y devolver fallback
+        # Si no está en disco, lanzar descarga en segundo plano SIN congelar la GUI
         with self._lock:
             if cid not in self._fetching_cids:
                 self._fetching_cids.add(cid)
@@ -387,14 +346,29 @@ class AssetManager:
                 return Image.open(local_path).convert("RGBA")
             except Exception:
                 pass
-        try:
-            resp = requests.get(url, timeout=2.5)
-            if resp.status_code == 200:
-                img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
-                img.save(local_path, format="PNG")
-                return img
-        except Exception:
-            pass
+
+        # Descargar en hilo secundario para NO congelar la interfaz de usuario
+        if not hasattr(self, "_fetching_images"):
+            self._fetching_images = set()
+
+        with self._lock:
+            if cache_filename in self._fetching_images:
+                return None
+            self._fetching_images.add(cache_filename)
+
+        def _bg_download() -> None:
+            try:
+                resp = requests.get(url, timeout=4.0)
+                if resp.status_code == 200:
+                    img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+                    img.save(local_path, format="PNG")
+            except Exception:
+                pass
+            finally:
+                with self._lock:
+                    self._fetching_images.discard(cache_filename)
+
+        threading.Thread(target=_bg_download, daemon=True).start()
         return None
 
     def get_champion_spectator_portrait(
