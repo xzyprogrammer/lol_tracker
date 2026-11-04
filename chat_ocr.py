@@ -271,11 +271,26 @@ class AutoChatScanner:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        with mss.mss() as sct:
+        # Guardamos el tiempo exacto en que terminó el último ciclo OCR para adaptarnos
+        # a la carga real del sistema y no forzar un sleep fijo que acumule retardos.
+        _last_cycle_end: float = 0.0
+        _GAME_SLEEP = 0.30   # 300 ms entre capturas en partida
+        _IDLE_SLEEP = 0.60   # 600 ms mientras espera cola (menos prioridad)
+
+        with mss.MSS() as sct:
             mon = sct.monitors[1]
             while not self._stop.is_set():
-                time.sleep(0.6)
+                now_w = time.monotonic()
+                # Respetar el intervalo desde el FINAL del ciclo anterior (no desde el inicio)
+                elapsed = now_w - _last_cycle_end
+                in_game = self.is_in_game()
+                target_sleep = _GAME_SLEEP if in_game else _IDLE_SLEEP
+                remaining = target_sleep - elapsed
+                if remaining > 0.01:
+                    time.sleep(remaining)
+
                 if not self.enabled:
+                    _last_cycle_end = time.monotonic()
                     continue
 
                 try:
@@ -290,6 +305,7 @@ class AutoChatScanner:
                                 if self.on_queue_accepted:
                                     self.on_queue_accepted()
                                 time.sleep(1.5)
+                                _last_cycle_end = time.monotonic()
                                 continue
 
                             # 1B) Vía OCR reposicionado en el CENTRO de la pantalla
@@ -308,9 +324,9 @@ class AutoChatScanner:
                                 self.last_raw_preview = " [Centro] " + " | ".join(c_lines[-2:])[:65]
                             joined_low = " ".join(c_lines).lower()
                             if any(k in joined_low for k in QUEUE_ACCEPT_KEYWORDS):
-                                now_w = time.monotonic()
-                                if now_w - self._last_accept_wall > 3.0:
-                                    self._last_accept_wall = now_w
+                                now_w2 = time.monotonic()
+                                if now_w2 - self._last_accept_wall > 3.0:
+                                    self._last_accept_wall = now_w2
                                     # Si LCU aún no aceptó, hacer clic en el botón Aceptar del centro
                                     if not try_lcu_auto_accept_ready_check():
                                         click_x = mon["left"] + int(mon["width"] * 0.50)
@@ -318,6 +334,7 @@ class AutoChatScanner:
                                         _click_screen_pos(click_x, click_y)
                                     if self.on_queue_accepted:
                                         self.on_queue_accepted()
+                        _last_cycle_end = time.monotonic()
                         continue
 
                     # MODO 2: EN PARTIDA -> OCR sobre la zona del Chat (Summoners + Ultimates)
@@ -332,15 +349,13 @@ class AutoChatScanner:
                     raw_img = Image.frombytes("RGB", shot.size, shot.rgb)
                     self.last_snapshot_image = raw_img
 
+                    # UN solo paso OCR a 2× para maximizar precisión con mínima latencia.
+                    # (El doble pase anterior añadía ~150-300ms extra innecesarios bajo carga de CPU.)
                     up_img = raw_img.resize(
                         (raw_img.width * 2, raw_img.height * 2), Image.Resampling.BILINEAR
                     )
-                    lines_raw = loop.run_until_complete(_run_winrt_ocr(engine, up_img))
+                    all_lines = loop.run_until_complete(_run_winrt_ocr(engine, up_img))
 
-                    hi_img = preprocess_lol_chat_image(raw_img)
-                    lines_hi = loop.run_until_complete(_run_winrt_ocr(engine, hi_img))
-
-                    all_lines = list(dict.fromkeys(lines_raw + lines_hi))
                     if all_lines:
                         self.last_raw_preview = " | ".join(all_lines[-2:])[:75]
 
@@ -390,5 +405,13 @@ class AutoChatScanner:
                             self._last_trigger_wall[key] = now_mono
                             self.on_confirmed_spell(slot_idx, spell_info, is_ult, ln)
 
+                    # Limpieza periódica de firmas muy antiguas para evitar memory leak
+                    # Conservamos máximo 2000 entradas; las más antiguas se purgan gradualmente.
+                    if len(self._consumed_event_signatures) > 2000:
+                        keep = dict(list(self._consumed_event_signatures.items())[-1000:])
+                        self._consumed_event_signatures = keep
+
                 except Exception as e:
                     self.last_raw_preview = f"Err: {str(e)[:40]}"
+
+                _last_cycle_end = time.monotonic()
