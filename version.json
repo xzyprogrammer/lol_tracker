@@ -1,7 +1,7 @@
 {
-  "version": "1.0.3",
-  "filename": "LoL_Spectator_HUD_1_0_3.exe",
-  "download_url": "https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_3.exe",
+  "version": "1.0.4",
+  "filename": "LoL_Spectator_HUD_1_0_4.exe",
+  "download_url": "https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_4.exe",
   "mandatory": false,
-  "changelog": "Versión 1.0.3:\n- Badge visual con la versión (v1.0.3) visible permanentemente en la barra superior.\n- Botón '👁 DEMO' con texto claro y carga 100% fluida en segundo plano (sin congelar la app).\n- Eliminado botón de calibración redundante que causaba bloqueo de ventana.\n- Optimización de descargas de iconos y definitivas en hilos asíncronos."
+  "changelog": "Versión 1.0.4:\n- Autodetección instantánea en segundo plano al iniciar partida (Keep-Alive continuo a 127.0.0.1:2999 sin micro-congelamientos).\n- Carga y actualización en tiempo real de retratos de todos los campeones sin pantallas oscuras.\n- Descarga y visualización automática de los iconos de Definitivas (R) de cada campeón.\n- Reseteo completo y limpio de slots y estados al iniciar una partida nueva."
 }

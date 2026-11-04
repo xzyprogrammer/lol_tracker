@@ -100,10 +100,27 @@ def _detect_boots_haste(items_list: list[dict]) -> tuple[bool, bool]:
     return has_lucidity, has_crimson
 
 
-def fetch_live_match_snapshot(timeout: float = 0.45) -> Optional[LiveMatchSnapshot]:
+_LIVE_SESSION: Optional[requests.Session] = None
+
+
+def get_live_session() -> requests.Session:
+    """Retorna una sesión HTTP persistente con Keep-Alive para consultar 127.0.0.1:2999 en < 5ms."""
+    global _LIVE_SESSION
+    if _LIVE_SESSION is None:
+        _LIVE_SESSION = requests.Session()
+        _LIVE_SESSION.verify = False
+        adapter = requests.adapters.HTTPAdapter(pool_connections=1, pool_maxsize=2, max_retries=0)
+        _LIVE_SESSION.mount("https://", adapter)
+    return _LIVE_SESSION
+
+
+def fetch_live_match_snapshot(
+    timeout: float = 1.8, session: Optional[requests.Session] = None
+) -> Optional[LiveMatchSnapshot]:
     """Lee el estado en vivo de la partida desde 127.0.0.1:2999."""
+    sess = session or get_live_session()
     try:
-        resp = requests.get(LIVE_CLIENT_URL, verify=False, timeout=timeout)
+        resp = sess.get(LIVE_CLIENT_URL, verify=False, timeout=timeout)
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -118,32 +135,52 @@ def fetch_live_match_snapshot(timeout: float = 0.45) -> Optional[LiveMatchSnapsh
     game_mode = str(game_data.get("gameMode", "CLASSIC"))
 
     active_player = data.get("activePlayer") or {}
-    active_name = (
-        active_player.get("riotIdGameName")
-        or active_player.get("summonerName")
-        or ""
-    ).strip().lower()
+    active_names: set[str] = set()
+    for field in ("riotId", "riotIdGameName", "summonerName"):
+        val = str(active_player.get(field) or "").strip().lower()
+        if val:
+            active_names.add(val)
+            if "#" in val:
+                active_names.add(val.split("#")[0].strip())
+
     active_riot_id = str(active_player.get("riotId") or "").strip()
 
     all_players = data.get("allPlayers") or []
     if not all_players:
         return None
 
-    my_team = "ORDER"
+    my_team = None
     for p in all_players:
-        p_name = (p.get("riotIdGameName") or p.get("summonerName") or "").strip().lower()
-        p_riot_id = str(p.get("riotId") or "").strip().lower()
-        if (active_name and p_name == active_name) or (
-            active_riot_id and p_riot_id == active_riot_id.lower()
-        ):
-            my_team = p.get("team", "ORDER")
+        p_names: set[str] = set()
+        for field in ("riotId", "riotIdGameName", "summonerName"):
+            val = str(p.get(field) or "").strip().lower()
+            if val:
+                p_names.add(val)
+                if "#" in val:
+                    p_names.add(val.split("#")[0].strip())
+        if active_names and active_names.intersection(p_names):
+            my_team = p.get("team")
             if not active_riot_id and p.get("riotId"):
                 active_riot_id = str(p.get("riotId"))
             break
 
+    if not my_team:
+        my_team = "ORDER"
+
     enemy_raw = [p for p in all_players if p.get("team") and p.get("team") != my_team]
     if not enemy_raw:
-        enemy_raw = all_players[:5]
+        enemy_raw = [
+            p
+            for p in all_players
+            if not active_names.intersection(
+                {
+                    str(p.get(f) or "").strip().lower()
+                    for f in ("riotId", "riotIdGameName", "summonerName")
+                }
+            )
+        ][:5]
+        if not enemy_raw:
+            enemy_raw = all_players[:5]
 
     fallback_roles = ["TOP", "JG", "MID", "ADC", "SUP"]
 

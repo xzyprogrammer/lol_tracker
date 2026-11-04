@@ -134,7 +134,9 @@ class AssetManager:
         self.champ_name_to_id: dict[str, str] = dict(SPECIAL_CHAMP_MAP)
         self.ult_info_by_cid: dict[str, ChampUltimateInfo] = {}
         self.item_haste_by_id: dict[int, int] = dict(DEFAULT_ITEM_HASTE)
+        self.cache_generation: int = 0
         self._fetching_cids: set[str] = set()
+        self._fetching_images: set[str] = set()
         self._mem_cache: dict[str, Image.Image] = {}
         self._lock = threading.Lock()
         self._init_done = False
@@ -333,6 +335,11 @@ class AssetManager:
                 )
             with self._lock:
                 self.ult_info_by_cid[cid] = info
+                self.cache_generation += 1
+
+            if img_full:
+                u_url = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/img/spell/{img_full}"
+                self._load_or_fetch_image(f"ult_{img_full}", u_url)
         except Exception:
             pass
         finally:
@@ -348,9 +355,6 @@ class AssetManager:
                 pass
 
         # Descargar en hilo secundario para NO congelar la interfaz de usuario
-        if not hasattr(self, "_fetching_images"):
-            self._fetching_images = set()
-
         with self._lock:
             if cache_filename in self._fetching_images:
                 return None
@@ -358,10 +362,12 @@ class AssetManager:
 
         def _bg_download() -> None:
             try:
-                resp = requests.get(url, timeout=4.0)
+                resp = requests.get(url, timeout=5.0)
                 if resp.status_code == 200:
                     img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
                     img.save(local_path, format="PNG")
+                    with self._lock:
+                        self.cache_generation += 1
             except Exception:
                 pass
             finally:
@@ -383,11 +389,12 @@ class AssetManager:
         if base is None:
             url = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/img/champion/{cid}.png"
             raw = self._load_or_fetch_image(f"champ_{cid}.png", url)
-            if raw is None:
-                raw = Image.new("RGBA", size, (28, 36, 52, 255))
-            base = raw.resize(size, Image.Resampling.LANCZOS)
-            with self._lock:
-                self._mem_cache[base_key] = base
+            if raw is not None:
+                base = raw.resize(size, Image.Resampling.LANCZOS)
+                with self._lock:
+                    self._mem_cache[base_key] = base
+            else:
+                base = Image.new("RGBA", size, (28, 36, 52, 255))
 
         out = base.copy()
         w, h = size
@@ -415,18 +422,18 @@ class AssetManager:
         fname = SPELL_DDRAGON_IMAGE.get(spell_key, "SummonerFlash.png")
         url = f"https://ddragon.leagueoflegends.com/cdn/{self.version}/img/spell/{fname}"
         base = self._load_or_fetch_image(f"spell_{fname}", url)
-        if base is None:
-            base = Image.new("RGBA", size, (45, 55, 72, 255))
-        resized = base.resize(size, Image.Resampling.LANCZOS)
-        with self._lock:
-            self._mem_cache[cache_key] = resized
-        return resized
+        if base is not None:
+            resized = base.resize(size, Image.Resampling.LANCZOS)
+            with self._lock:
+                self._mem_cache[cache_key] = resized
+            return resized
+        return Image.new("RGBA", size, (45, 55, 72, 255))
 
     def get_ultimate_base_image(self, champ_name: str, size: tuple[int, int] = (28, 28)) -> Image.Image:
         ult_info = self.get_ultimate_info(champ_name)
         cache_key = f"ult_img_{ult_info.champ_id}_{size[0]}x{size[1]}"
         with self._lock:
-            if cache_key in self._mem_cache and ult_info.image_full:
+            if cache_key in self._mem_cache:
                 return self._mem_cache[cache_key]
 
         if ult_info.image_full:
@@ -438,7 +445,7 @@ class AssetManager:
                     self._mem_cache[cache_key] = resized
                 return resized
 
-        # Fallback elegante con letra "R" dorada mientras descarga
+        # Fallback elegante con letra "R" dorada mientras descarga (no se guarda en _mem_cache)
         fallback = Image.new("RGBA", size, (25, 32, 48, 255))
         draw = ImageDraw.Draw(fallback)
         try:

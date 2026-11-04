@@ -1,7 +1,7 @@
 # ⚡ LoL Spectator HUD — Summoner & Ultimate Tracker
 
-[![Descargar Ejecutable (.exe)](https://img.shields.io/badge/⬇_DESCARGAR_EJECUTABLE-LoL__Spectator__HUD__1__0__3.exe-2b6cb0?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_3.exe)
-[![Versión](https://img.shields.io/badge/VERSIÓN-v1.0.3-68d391?style=for-the-badge)](https://github.com/xzyprogrammer/lol_tracker/releases)
+[![Descargar Ejecutable (.exe)](https://img.shields.io/badge/⬇_DESCARGAR_EJECUTABLE-LoL__Spectator__HUD__1__0__4.exe-2b6cb0?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_4.exe)
+[![Versión](https://img.shields.io/badge/VERSIÓN-v1.0.4-68d391?style=for-the-badge)](https://github.com/xzyprogrammer/lol_tracker/releases)
 [![Sitio Web Oficial](https://img.shields.io/badge/🌐_WEB_DEL_PROYECTO-GitHub_Pages-38a169?style=for-the-badge)](https://xzyprogrammer.github.io/lol_tracker/)
 [![Código Abierto](https://img.shields.io/badge/CÓDIGO_ABIERTO-Python_3-ecc94b?style=for-the-badge&logo=python&logoColor=black)](https://github.com/xzyprogrammer/lol_tracker)
 
@@ -13,8 +13,8 @@
 
 No necesitas instalar Python ni configurar nada complicado si solo quieres usar la herramienta:
 
-1. 👉 **[Haz clic aquí para descargar `LoL_Spectator_HUD_1_0_3.exe` directamente](https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_3.exe)** *(Ejecutable portable para Windows 10/11)*.
-2. Abre `LoL_Spectator_HUD_1_0_3.exe` antes o durante tu partida.
+1. 👉 **[Haz clic aquí para descargar `LoL_Spectator_HUD_1_0_4.exe` directamente](https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_4.exe)** *(Ejecutable portable para Windows 10/11)*.
+2. Abre `LoL_Spectator_HUD_1_0_4.exe` antes o durante tu partida.
 3. Si Windows SmartScreen muestra un aviso (por ser un ejecutable independiente sin firma empresarial de pago), haz clic en **"Más información" → "Ejecutar de todas formas"**.
 4. 🚀 **Auto-Actualización Automática:** Cuando haya una nueva versión disponible en GitHub, la aplicación te avisará al arrancar y te permitirá actualizarla automáticamente con un solo clic.
 

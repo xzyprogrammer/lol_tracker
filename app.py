@@ -239,6 +239,7 @@ class SpectatorEnemyRow:
             int(round(rem_u)),
             slot.has_cosmic_insight,
             slot.has_lucidity_boots or slot.has_crimson_lucidity,
+            assets.cache_generation,
             assets._init_done,
         )
         if sig == self._last_sig:
@@ -353,9 +354,16 @@ class SpectatorHudApp(ctk.CTk):
 
         self.rows: list[SpectatorEnemyRow] = []
         self._current_view_mode: str = ""
+        self._snap_lock = threading.Lock()
+        self._latest_snap: Optional[LiveMatchSnapshot] = None
+        self._latest_snap_time: float = 0.0
+        self._live_poller_running = True
+        self._live_poller_thread = threading.Thread(target=self._live_poller_worker, daemon=True)
+        self._live_poller_thread.start()
+
         self._build_ui()
         self._update_view_mode()
-        self.after(200, self._main_loop)
+        self.after(150, self._main_loop)
         self.after(800, self._check_updates_bg)
 
     def _check_updates_bg(self) -> None:
@@ -398,6 +406,8 @@ class SpectatorHudApp(ctk.CTk):
             s.manual_boots_override = None
             s.spell_timers.clear()
             s.timer_ult = None
+        for r in getattr(self, "rows", []):
+            r._last_sig = ()
         self.active_enemy_count = 0
         self.scanner._consumed_event_signatures.clear()
         self.scanner._last_trigger_wall.clear()
@@ -809,34 +819,55 @@ class SpectatorHudApp(ctk.CTk):
 
         _refresh_preview()
 
-    def _poll_live_game(self) -> None:
-        snap: Optional[LiveMatchSnapshot] = fetch_live_match_snapshot(timeout=0.65)
-        if snap is None:
+    def _live_poller_worker(self) -> None:
+        """
+        Sondea continuamente 127.0.0.1:2999 en segundo plano con sesión persistente (Keep-Alive).
+        No bloquea nunca la interfaz gráfica de Tkinter y detecta el inicio de la partida en < 1 segundo.
+        """
+        while self._live_poller_running:
+            try:
+                snap = fetch_live_match_snapshot(timeout=1.6)
+                with self._snap_lock:
+                    if snap is not None:
+                        self._latest_snap = snap
+                        self._latest_snap_time = time.monotonic()
+            except Exception:
+                pass
+            time.sleep(0.7)
+
+    def _process_live_snapshot(self) -> None:
+        with self._snap_lock:
+            snap = self._latest_snap
+            snap_time = self._latest_snap_time
+
+        now = time.monotonic()
+        # Si nunca hubo snapshot o el último tiene más de 4.5 segundos, la partida terminó o no ha empezado
+        if snap is None or (now - snap_time > 4.5):
             if self.is_live_connected:
-                self._missed_poll_count += 1
-                # Solo declaramos fin de partida tras 5 fallos consecutivos (~6 segundos sin respuesta)
-                if self._missed_poll_count >= 5:
-                    self.is_live_connected = False
-                    self.preview_hud_when_waiting = False
-                    self.spectator_queried_for_match = False
-                    self.spectator_cosmic_by_riot_id.clear()
-                    self._reset_all_slots()
-                    self._update_view_mode()
+                self.is_live_connected = False
+                self.preview_hud_when_waiting = False
+                self.spectator_queried_for_match = False
+                self.spectator_cosmic_by_riot_id.clear()
+                self._reset_all_slots()
+                self._update_view_mode()
             return
 
-        self._missed_poll_count = 0
         was_connected = self.is_live_connected
         if not was_connected:
-            # Inició una partida nueva: limpiar cualquier dato residual antes de cargar los rivales actuales
             self._reset_all_slots()
+            self.is_live_connected = True
+            self._update_view_mode()
 
         self.is_live_connected = True
         self.game_time_seconds = snap.game_time_seconds
         num_enemies = min(5, len(snap.enemies))
         self.active_enemy_count = num_enemies
 
-        if not was_connected:
-            self._update_view_mode()
+        # Pre-cargar de inmediato retratos e información de la R para que aparezcan en < 1s
+        for enemy in snap.enemies:
+            self.assets.get_champion_spectator_portrait(enemy.champion_name, level=enemy.level)
+            self.assets.get_ultimate_info(enemy.champion_name)
+            self.assets.get_ultimate_base_image(enemy.champion_name)
 
         if (
             not self.spectator_queried_for_match
@@ -869,8 +900,6 @@ class SpectatorHudApp(ctk.CTk):
                 slot.has_crimson_lucidity = enemy.has_crimson_lucidity
                 slot.ability_haste = self.assets.get_items_ability_haste(enemy.items)
 
-                self.assets.get_ultimate_info(enemy.champion_name)
-
                 if slot.manual_cosmic_override is None:
                     rid_lower = enemy.riot_id.lower()
                     if rid_lower and rid_lower in self.spectator_cosmic_by_riot_id:
@@ -885,7 +914,6 @@ class SpectatorHudApp(ctk.CTk):
 
                 self._recalculate_slot(slot)
             else:
-                # Si es 1v1, 2v2 o 3v3, limpiar los slots sobrantes para que no queden rivales viejos
                 slot.champion_name = ""
                 slot.riot_id = ""
                 slot.level = 1
@@ -947,17 +975,22 @@ class SpectatorHudApp(ctk.CTk):
             self.trigger_from_auto_chat(slot_idx, spell_info, is_ult, raw_line)
 
     def _main_loop(self) -> None:
-        now = time.monotonic()
-        if now - self.last_api_poll_wall >= 1.2:
-            self.last_api_poll_wall = now
-            self._poll_live_game()
+        self._process_live_snapshot()
 
         if not self.is_live_connected and self.preview_hud_when_waiting:
-            self.game_time_seconds += 0.2
+            self.game_time_seconds += 0.1
 
         self._drain_detected_chat_events()
         self._refresh_ui()
-        self.after(200, self._main_loop)
+        self.after(100, self._main_loop)
+
+    def destroy(self) -> None:
+        self._live_poller_running = False
+        try:
+            self.scanner.running = False
+        except Exception:
+            pass
+        super().destroy()
 
 
 def main() -> None:
