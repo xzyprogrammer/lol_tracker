@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
-  "filename": "LoL_Spectator_HUD_1_0_0.exe",
-  "download_url": "https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_0.exe",
+  "version": "1.0.2",
+  "filename": "LoL_Spectator_HUD_1_0_2.exe",
+  "download_url": "https://github.com/xzyprogrammer/lol_tracker/raw/main/dist/LoL_Spectator_HUD_1_0_2.exe",
   "mandatory": false,
-  "changelog": "Versión 1.0.0:\n- Tracker estilo Espectador minimalista para Summoners y R.\n- Detección automática por OCR en tiempo real desde el chat del juego.\n- Cálculo exacto oficial de Summoner Spell Haste y Ability Haste de Riot.\n- Auto-Accept para aceptar colas de emparejamiento automáticamente.\n- Sistema de auto-actualización automática integrado."
+  "changelog": "Versión 1.0.2:\n- Actualización automática probada y verificada.\n- Corrección del re-disparo de Destello al ultear.\n- Cálculo dinámico de Aceleración de Habilidad (Ability Haste) para Definitivas (R).\n- Estabilidad de conexión con la API de Riot Games."
 }
